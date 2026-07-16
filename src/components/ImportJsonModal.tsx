@@ -9,6 +9,7 @@ interface ImportJsonModalProps {
 const PLACEHOLDER = `{
   "files": [
     {
+      "file": "项目A",
       "name": "示例.mmd",
       "mermaid": "sequenceDiagram\\n    A->>B: Hello"
     }

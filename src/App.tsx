@@ -380,12 +380,20 @@ export default function App() {
     async (filePaths: string[]) => {
       try {
         if (filePaths.length === 0) return;
-        const files = await Promise.all(filePaths.map(async (filePath) => ({
-          name: filePath.split(/[\\/]/).pop() ?? '未命名.mmd',
-          mermaid: activeFilePath === filePath
-            ? code
-            : (await window.electronAPI!.readText(filePath)).content,
-        })));
+        const root = save.mmdDir.replace(/\\/g, '/').replace(/\/$/, '');
+        const files = await Promise.all(filePaths.map(async (filePath) => {
+          const normalizedPath = filePath.replace(/\\/g, '/');
+          const slash = normalizedPath.lastIndexOf('/');
+          const parent = slash >= 0 ? normalizedPath.slice(0, slash) : '';
+          const folder = parent === root ? '' : parent.startsWith(`${root}/`) ? parent.slice(root.length + 1) : '';
+          return {
+            file: folder,
+            name: normalizedPath.slice(slash + 1) || '未命名.mmd',
+            mermaid: activeFilePath === filePath
+              ? code
+              : (await window.electronAPI!.readText(filePath)).content,
+          };
+        }));
         const content = JSON.stringify({ files }, null, 2);
         if (window.electronAPI?.copyTextClipboard) {
           await window.electronAPI.copyTextClipboard(content);
@@ -397,7 +405,7 @@ export default function App() {
         push({ type: 'error', text: `复制失败：${(e as Error).message}` });
       }
     },
-    [activeFilePath, code, push],
+    [activeFilePath, code, push, save.mmdDir],
   );
 
   const handleImportJson = useCallback(
@@ -415,10 +423,11 @@ export default function App() {
       if (rawFiles.length === 0) throw new Error('files 数组不能为空');
       const files = rawFiles.map((file, index) => {
         if (!file || typeof file !== 'object') throw new Error(`第 ${index + 1} 项格式无效`);
-        const { name, mermaid } = file as { name?: unknown; mermaid?: unknown };
+        const { file: folder, name, mermaid } = file as { file?: unknown; name?: unknown; mermaid?: unknown };
+        if (folder != null && typeof folder !== 'string') throw new Error(`第 ${index + 1} 项的 file 必须是字符串`);
         if (typeof name !== 'string' || !name.trim()) throw new Error(`第 ${index + 1} 项缺少文件名`);
         if (typeof mermaid !== 'string') throw new Error(`${name} 缺少 mermaid 字符串`);
-        return { name: name.trim(), mermaid };
+        return { file: typeof folder === 'string' ? folder.trim() : '', name: name.trim(), mermaid };
       });
       const api = window.electronAPI;
       if (!api?.importMmdFiles) throw new Error('当前桌面版本不支持 JSON 导入');

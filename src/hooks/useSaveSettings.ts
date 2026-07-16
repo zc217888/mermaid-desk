@@ -26,10 +26,10 @@ export interface ElectronAPI {
   createMmdFile: (dirPath: string, fileName: string) => Promise<{ ok: true; filePath: string; name: string; size: number; mtime: number }>;
   importMmdFiles: (
     dirPath: string,
-    files: Array<{ name: string; mermaid: string }>,
+    files: Array<{ file: string; name: string; mermaid: string }>,
   ) => Promise<{
     ok: true;
-    items: Array<{ name: string; filePath: string; content: string; action: 'created' | 'replaced' }>;
+    items: Array<{ name: string; filePath: string; content: string; action: 'created' | 'replaced'; folder: string }>;
     created: number;
     replaced: number;
   }>;

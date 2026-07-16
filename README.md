@@ -79,6 +79,7 @@ playwright install chromium
 {
   "files": [
     {
+      "file": "",
       "name": "example.mmd",
       "mermaid": "sequenceDiagram\n    A->>B: Hello"
     }
@@ -88,7 +89,7 @@ playwright install chromium
 
 JSON 不包含本机绝对路径，可以直接粘贴给 AI。
 
-复制得到的 JSON 也可以通过文件栏顶部的导入按钮重新导入。导入时以 `name` 作为文件名，以 `mermaid` 作为文件内容；同名文件会覆盖，不存在的文件会自动创建。
+复制得到的 JSON 也可以通过文件栏顶部的导入按钮重新导入。每个文件项的 `file` 为空时写入源码根目录；填写相对文件夹路径时会创建或复用该文件夹，因此一次可以导入到多个不同目录。导入时以 `name` 作为文件名，以 `mermaid` 作为文件内容；同一文件夹中的同名文件会覆盖，不存在的文件会自动创建。
 
 ## 项目结构
 

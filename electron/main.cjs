@@ -224,6 +224,25 @@ function sanitizeFileName(name) {
   return trimmed;
 }
 
+/** 校验可选相对文件夹路径，禁止绝对路径和目录穿越 */
+function sanitizeImportFolder(name) {
+  if (name == null || name === '') return { relativePath: '', display: '' };
+  if (typeof name !== 'string') throw new Error('file 必须是字符串');
+  const trimmed = name.trim();
+  if (!trimmed) return { relativePath: '', display: '' };
+  if (/^[\\/]/.test(trimmed) || /^[A-Za-z]:/.test(trimmed)) {
+    throw new Error('file 只能使用相对文件夹路径');
+  }
+  const segments = trimmed.replace(/\\/g, '/').split('/');
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+    throw new Error('file 文件夹路径无效');
+  }
+  if (segments.some((segment) => /[:*?"<>|]/.test(segment))) {
+    throw new Error('file 包含非法字符：: * ? " < > |');
+  }
+  return { relativePath: path.join(...segments), display: segments.join('/') };
+}
+
 /** 重命名文件 */
 ipcMain.handle('rename-file', async (_evt, oldPath, newName) => {
   if (typeof oldPath !== 'string' || !oldPath) throw new Error('原路径无效');
@@ -265,20 +284,22 @@ ipcMain.handle('import-mmd-files', async (_evt, dirPath, files) => {
   const normalized = files.map((file, index) => {
     if (!file || typeof file !== 'object') throw new Error(`第 ${index + 1} 项格式无效`);
     const name = sanitizeFileName(file.name);
+    const folder = sanitizeImportFolder(file.file);
     if (typeof file.mermaid !== 'string') throw new Error(`${name} 的 mermaid 内容必须是字符串`);
-    const key = name.toLowerCase();
-    if (seen.has(key)) throw new Error(`JSON 中存在重复文件名：${name}`);
+    const key = `${folder.display.toLowerCase()}/${name.toLowerCase()}`;
+    if (seen.has(key)) throw new Error(`JSON 中存在重复目标：${folder.display ? `${folder.display}/` : ''}${name}`);
     seen.add(key);
-    return { name, content: file.mermaid };
+    return { name, content: file.mermaid, folder };
   });
 
-  await fsp.mkdir(dirPath, { recursive: true });
   const items = [];
   for (const file of normalized) {
-    const filePath = path.join(dirPath, file.name);
+    const targetDir = file.folder.relativePath ? path.join(dirPath, file.folder.relativePath) : dirPath;
+    await fsp.mkdir(targetDir, { recursive: true });
+    const filePath = path.join(targetDir, file.name);
     const action = fs.existsSync(filePath) ? 'replaced' : 'created';
     await fsp.writeFile(filePath, file.content, 'utf-8');
-    items.push({ name: file.name, filePath, content: file.content, action });
+    items.push({ name: file.name, filePath, content: file.content, action, folder: file.folder.display });
   }
   return {
     ok: true,
