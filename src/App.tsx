@@ -72,23 +72,43 @@ export default function App() {
       const workspace = workspaceRef.current;
       if (!workspace) return;
       const startX = event.clientX;
-      const startSidebar = sidebarWidth;
-      const startEditor = editorWidth;
-      const totalWidth = workspace.getBoundingClientRect().width;
+      const panels = workspace.children;
+      const startSidebar = panels[0]?.getBoundingClientRect().width ?? sidebarWidth;
+      const startEditor = panels[2]?.getBoundingClientRect().width ?? editorWidth;
+      const workspaceStyle = window.getComputedStyle(workspace);
+      const horizontalPadding =
+        Number.parseFloat(workspaceStyle.paddingLeft) + Number.parseFloat(workspaceStyle.paddingRight);
+      const gap = Number.parseFloat(workspaceStyle.columnGap) || 0;
+      const contentWidth = workspace.getBoundingClientRect().width - horizontalPadding;
+      const fixedTracksWidth = 12 + gap * 4;
+      let hasMoved = false;
 
       const onMove = (moveEvent: PointerEvent) => {
         const delta = moveEvent.clientX - startX;
+        if (!hasMoved && Math.abs(delta) < 2) return;
+        hasMoved = true;
+
         if (target === 'sidebar') {
-          const max = Math.max(180, totalWidth - startEditor - 340);
+          if (sidebarCollapsed) setSidebarCollapsed(false);
+          const previewMinimum = previewCollapsed ? 44 : 280;
+          const editorReservation = previewCollapsed ? (editorCollapsed ? 44 : 280) : startEditor;
+          const max = Math.max(
+            180,
+            contentWidth - editorReservation - previewMinimum - fixedTracksWidth,
+          );
           setSidebarWidth(Math.max(180, Math.min(max, startSidebar + delta)));
         } else {
-          const max = Math.max(280, totalWidth - startSidebar - 340);
+          if (editorCollapsed) setEditorCollapsed(false);
+          if (previewCollapsed) setPreviewCollapsed(false);
+          const sidebarTrack = sidebarCollapsed ? 44 : startSidebar;
+          const max = Math.max(280, contentWidth - sidebarTrack - 280 - fixedTracksWidth);
           setEditorWidth(Math.max(280, Math.min(max, startEditor + delta)));
         }
       };
       const onUp = () => {
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       };
@@ -96,8 +116,9 @@ export default function App() {
       document.body.style.userSelect = 'none';
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
     },
-    [editorWidth, sidebarWidth],
+    [editorCollapsed, editorWidth, previewCollapsed, sidebarCollapsed, sidebarWidth],
   );
 
   // 当前文件有内容修改时自动覆盖保存；没有活动文件时由草稿自动保存兜底。
@@ -591,11 +612,11 @@ export default function App() {
           '--editor-width': `${editorWidth}px`,
           gridTemplateColumns: [
             `${sidebarCollapsed ? 44 : sidebarWidth}px`,
-            sidebarCollapsed ? '0' : '6px',
+            '6px',
             previewCollapsed && !editorCollapsed
               ? 'minmax(280px, 1fr)'
               : `${editorCollapsed ? 44 : editorWidth}px`,
-            editorCollapsed || previewCollapsed ? '0' : '6px',
+            '6px',
             previewCollapsed ? '44px' : 'minmax(280px, 1fr)',
           ].join(' '),
         } as CSSProperties}

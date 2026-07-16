@@ -18,10 +18,6 @@
   min-height: 0;
 }
 
-.workspace[data-collapsed='true'] {
-  grid-template-columns: 44px 0 var(--editor-width, 480px) 6px minmax(280px, 1fr);
-}
-
 .panel-resizer {
   position: relative;
   width: 100%;
@@ -43,17 +39,6 @@
 .panel-resizer:active::after {
   background: var(--accent-2);
   transform: scaleX(1.5);
-}
-
-.workspace[data-collapsed='true'] .sidebar-resizer {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.workspace[data-editor-collapsed='true'] .editor-resizer,
-.workspace[data-preview-collapsed='true'] .editor-resizer {
-  visibility: hidden;
-  pointer-events: none;
 }
 
 /* ===== 工具栏 ===== */
