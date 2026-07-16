@@ -70,9 +70,9 @@ export function TopBar(props: TopBarProps) {
             <Sparkles size={18} strokeWidth={2.5} />
           </div>
           <div className="brand-text">
-            <span>Mermaid 图表工坊</span>
+            <span>Mermaid Desk</span>
             <span className="brand-sub">
-              Codex · {props.isElectron ? 'Desktop' : 'Web'}
+              Desk · {props.isElectron ? 'Desktop' : 'Web'}
             </span>
           </div>
         </div>

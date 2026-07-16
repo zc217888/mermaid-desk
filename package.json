@@ -1,8 +1,8 @@
 {
-  "name": "mermaid-codex",
+  "name": "mermaid-desk",
   "private": true,
   "version": "0.1.0",
-  "description": "Mermaid 图表工坊（Electron 桌面版，支持固定保存路径）",
+  "description": "Mermaid Desk - 本地优先的 Mermaid 桌面编辑器",
   "main": "electron/main.cjs",
   "scripts": {
     "dev:vite": "vite",
@@ -34,8 +34,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.mermaidcodex.app",
-    "productName": "Mermaid Codex",
+    "appId": "com.zc217888.mermaiddesk",
+    "productName": "Mermaid Desk",
     "directories": {
       "output": "release"
     },

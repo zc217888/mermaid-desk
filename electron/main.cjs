@@ -52,7 +52,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 640,
-    title: 'Mermaid 图表工坊',
+    title: 'Mermaid Desk',
     backgroundColor: '#0b1020',
     autoHideMenuBar: true,
     webPreferences: {
