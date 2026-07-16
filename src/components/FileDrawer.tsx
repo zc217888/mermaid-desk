@@ -23,6 +23,7 @@ import {
   CornerDownRight,
   ClipboardCopy,
   ListChecks,
+  FileInput,
 } from 'lucide-react';
 import type { DirEntry } from '../hooks/useSaveSettings';
 
@@ -36,6 +37,7 @@ interface FileSidebarProps {
   onLoad: (file: { name: string; path: string; content: string }) => void;
   onReveal?: (filePath: string) => void;
   onCopyContent?: (filePaths: string[]) => Promise<void>;
+  onOpenImport?: () => void;
   onRename?: (oldPath: string, newName: string) => Promise<void>;
   onDelete?: (filePath: string) => Promise<void>;
   onCreate?: (fileName: string, dirPath?: string) => Promise<{ name: string; path: string } | null>;
@@ -81,6 +83,7 @@ export function FileSidebar({
   onLoad,
   onReveal,
   onCopyContent,
+  onOpenImport,
   onRename,
   onDelete,
   onCreate,
@@ -501,6 +504,11 @@ export function FileSidebar({
           {dirName}
         </span>
         <div className="file-sidebar-header-actions">
+          {onOpenImport && (
+            <button className="file-sidebar-icon-btn" onClick={onOpenImport} title="导入 Mermaid JSON">
+              <FileInput size={13} />
+            </button>
+          )}
           {onCopyContent && (
             <button
               className="file-sidebar-icon-btn"

@@ -24,6 +24,15 @@ export interface ElectronAPI {
   listMmdDir: (p: string) => Promise<Array<{ name: string; path: string; size: number; mtime: number }>>;
   renameFile: (oldPath: string, newName: string) => Promise<{ ok: true; filePath: string; name: string }>;
   createMmdFile: (dirPath: string, fileName: string) => Promise<{ ok: true; filePath: string; name: string; size: number; mtime: number }>;
+  importMmdFiles: (
+    dirPath: string,
+    files: Array<{ name: string; mermaid: string }>,
+  ) => Promise<{
+    ok: true;
+    items: Array<{ name: string; filePath: string; content: string; action: 'created' | 'replaced' }>;
+    created: number;
+    replaced: number;
+  }>;
   deleteFile: (p: string) => Promise<{ ok: true }>;
   listDir: (p: string) => Promise<DirEntry[]>;
   createDir: (parentPath: string, dirName: string) => Promise<{ ok: true; filePath: string; name: string }>;

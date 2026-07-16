@@ -255,6 +255,39 @@ ipcMain.handle('create-mmd-file', async (_evt, dirPath, fileName) => {
   };
 });
 
+/** 批量导入 Mermaid JSON：同名覆盖，不存在则创建 */
+ipcMain.handle('import-mmd-files', async (_evt, dirPath, files) => {
+  if (typeof dirPath !== 'string' || !dirPath) throw new Error('目录路径无效');
+  if (!Array.isArray(files) || files.length === 0) throw new Error('JSON 中没有可导入的文件');
+  if (files.length > 200) throw new Error('单次最多导入 200 个文件');
+
+  const seen = new Set();
+  const normalized = files.map((file, index) => {
+    if (!file || typeof file !== 'object') throw new Error(`第 ${index + 1} 项格式无效`);
+    const name = sanitizeFileName(file.name);
+    if (typeof file.mermaid !== 'string') throw new Error(`${name} 的 mermaid 内容必须是字符串`);
+    const key = name.toLowerCase();
+    if (seen.has(key)) throw new Error(`JSON 中存在重复文件名：${name}`);
+    seen.add(key);
+    return { name, content: file.mermaid };
+  });
+
+  await fsp.mkdir(dirPath, { recursive: true });
+  const items = [];
+  for (const file of normalized) {
+    const filePath = path.join(dirPath, file.name);
+    const action = fs.existsSync(filePath) ? 'replaced' : 'created';
+    await fsp.writeFile(filePath, file.content, 'utf-8');
+    items.push({ name: file.name, filePath, content: file.content, action });
+  }
+  return {
+    ok: true,
+    items,
+    created: items.filter((item) => item.action === 'created').length,
+    replaced: items.filter((item) => item.action === 'replaced').length,
+  };
+});
+
 /** 删除文件（不进入回收站，直接删） */
 ipcMain.handle('delete-file', async (_evt, filePath) => {
   if (typeof filePath !== 'string' || !filePath) throw new Error('路径无效');

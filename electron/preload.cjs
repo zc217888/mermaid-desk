@@ -37,6 +37,9 @@ const api = {
   /** 新建空 .mmd 文件 */
   createMmdFile: (dirPath, fileName) => ipcRenderer.invoke('create-mmd-file', dirPath, fileName),
 
+  /** 从 JSON 批量创建或覆盖 .mmd 文件 */
+  importMmdFiles: (dirPath, files) => ipcRenderer.invoke('import-mmd-files', dirPath, files),
+
   /** 删除文件 */
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
 

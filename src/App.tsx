@@ -10,6 +10,7 @@ import { EditorPane } from './components/EditorPane';
 import { PreviewPane } from './components/PreviewPane';
 import { StatusBar } from './components/StatusBar';
 import { ExamplesModal } from './components/ExamplesModal';
+import { ImportJsonModal } from './components/ImportJsonModal';
 import { FileSidebar } from './components/FileDrawer';
 import { Toast, useToast } from './components/Toast';
 import './styles/app.css';
@@ -48,6 +49,7 @@ export default function App() {
     Number(localStorage.getItem(STORAGE_KEYS.lastSaved) || 0) || null,
   );
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [importJsonOpen, setImportJsonOpen] = useState(false);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [fileRefreshSignal, setFileRefreshSignal] = useState(0);
@@ -104,6 +106,7 @@ export default function App() {
     const revision = ++autoSaveRevisionRef.current;
     const timer = setTimeout(async () => {
       try {
+        if (revision !== autoSaveRevisionRef.current) return;
         await save.saveMmdToPath(activeFilePath, code);
         if (revision !== autoSaveRevisionRef.current) return;
         const now = Date.now();
@@ -397,6 +400,43 @@ export default function App() {
     [activeFilePath, code, push],
   );
 
+  const handleImportJson = useCallback(
+    async (text: string) => {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error('JSON 格式无效');
+      }
+      if (!payload || typeof payload !== 'object' || !Array.isArray((payload as { files?: unknown }).files)) {
+        throw new Error('JSON 必须包含 files 数组');
+      }
+      const rawFiles = (payload as { files: unknown[] }).files;
+      if (rawFiles.length === 0) throw new Error('files 数组不能为空');
+      const files = rawFiles.map((file, index) => {
+        if (!file || typeof file !== 'object') throw new Error(`第 ${index + 1} 项格式无效`);
+        const { name, mermaid } = file as { name?: unknown; mermaid?: unknown };
+        if (typeof name !== 'string' || !name.trim()) throw new Error(`第 ${index + 1} 项缺少文件名`);
+        if (typeof mermaid !== 'string') throw new Error(`${name} 缺少 mermaid 字符串`);
+        return { name: name.trim(), mermaid };
+      });
+      const api = window.electronAPI;
+      if (!api?.importMmdFiles) throw new Error('当前桌面版本不支持 JSON 导入');
+
+      // 取消尚未执行的旧内容自动保存，避免它覆盖刚导入的文件。
+      autoSaveRevisionRef.current += 1;
+      const result = await api.importMmdFiles(save.mmdDir, files);
+      const activeItem = result.items.find((item) => item.filePath === activeFilePath);
+      if (activeItem) setCode(activeItem.content);
+      setFileRefreshSignal((value) => value + 1);
+      push({
+        type: 'success',
+        text: `导入完成：新建 ${result.created} 个，覆盖 ${result.replaced} 个`,
+      });
+    },
+    [activeFilePath, push, save.mmdDir],
+  );
+
   // 新建文件夹
   const handleCreateDir = useCallback(
     async (parentPath: string, dirName: string) => {
@@ -557,6 +597,7 @@ export default function App() {
           onLoad={handleLoadFromDrawer}
           onReveal={save.revealInFolder}
           onCopyContent={handleCopyFileContent}
+          onOpenImport={() => setImportJsonOpen(true)}
           onRename={handleRename}
           onDelete={handleDelete}
           onCreate={handleCreate}
@@ -611,6 +652,9 @@ export default function App() {
         pythonError={save.pythonError}
       />
       {examplesOpen && <ExamplesModal onClose={() => setExamplesOpen(false)} onPick={handlePickExample} />}
+      {importJsonOpen && (
+        <ImportJsonModal onClose={() => setImportJsonOpen(false)} onImport={handleImportJson} />
+      )}
       <Toast toast={toast} />
     </div>
   );
