@@ -46,6 +46,24 @@ function getPythonCmd() {
   return _pythonCmd;
 }
 
+/** 对 nativeImage 做缩略像素采样，拒绝纯白或全透明图片。 */
+function imageHasVisibleContent(image) {
+  if (!image || image.isEmpty()) return false;
+  const size = image.getSize();
+  if (size.width <= 1 || size.height <= 1) return false;
+  const sample = image.resize({ width: Math.min(64, size.width), quality: 'good' });
+  const bitmap = sample.toBitmap();
+  let visiblePixels = 0;
+  for (let i = 0; i + 3 < bitmap.length; i += 4) {
+    const alpha = bitmap[i + 3];
+    if (alpha > 20 && (bitmap[i] < 245 || bitmap[i + 1] < 245 || bitmap[i + 2] < 245)) {
+      visiblePixels += 1;
+      if (visiblePixels >= 4) return true;
+    }
+  }
+  return false;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -425,6 +443,8 @@ ipcMain.handle('write-png', async (_evt, { filePath, dataUrl }) => {
     throw new Error('dataUrl 必须是 data:image/png;base64,...');
   }
   const buf = Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64');
+  const image = nativeImage.createFromBuffer(buf);
+  if (!imageHasVisibleContent(image)) throw new Error('拒绝保存空白 PNG');
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
   await fsp.writeFile(filePath, buf);
   return { ok: true, filePath, size: buf.length };
@@ -434,10 +454,14 @@ ipcMain.handle('write-png', async (_evt, { filePath, dataUrl }) => {
 ipcMain.handle('copy-png-clipboard', async (_evt, dataUrl) => {
   if (typeof dataUrl !== 'string' || !dataUrl) throw new Error('dataUrl 无效');
   const img = nativeImage.createFromDataURL(dataUrl);
-  if (img.isEmpty()) throw new Error('PNG 解析失败');
-  const { clipboard } = require('electron');
+  if (!imageHasVisibleContent(img)) throw new Error('拒绝复制空白 PNG');
+  clipboard.clear();
   clipboard.writeImage(img);
-  return { ok: true };
+  const copied = clipboard.readImage();
+  if (copied.isEmpty()) throw new Error('系统剪贴板未能保存 PNG');
+  const size = copied.getSize();
+  if (size.width <= 1 || size.height <= 1) throw new Error('剪贴板中的 PNG 尺寸无效');
+  return { ok: true, width: size.width, height: size.height };
 });
 
 /**
@@ -498,6 +522,12 @@ ipcMain.handle('convert-svg-to-png', async (_evt, { svgString, outputPath, scale
       clearTimeout(timer);
       if (killed) return; // 已被超时分支处理
       if (code === 0 && fs.existsSync(outputPath)) {
+        const image = nativeImage.createFromPath(outputPath);
+        if (!imageHasVisibleContent(image)) {
+          try { fs.unlinkSync(outputPath); } catch { /* ignore */ }
+          reject(new Error('Python 生成了空白 PNG，已拒绝保存'));
+          return;
+        }
         const size = fs.statSync(outputPath).size;
         resolve({
           ok: true,
@@ -595,10 +625,13 @@ ipcMain.handle('copy-svg-as-png-to-clipboard', async (_evt, { svgString, scale }
 
     // 2) 读 PNG 写到剪贴板
     const img = nativeImage.createFromPath(tempPng);
-    if (img.isEmpty()) throw new Error('PNG 解析失败：' + tempPng);
-    const { clipboard } = require('electron');
+    if (!imageHasVisibleContent(img)) throw new Error('Python 生成了空白 PNG，已拒绝复制');
+    clipboard.clear();
     clipboard.writeImage(img);
-    return { ok: true, durationMs: Date.now() - start };
+    const copied = clipboard.readImage();
+    if (copied.isEmpty()) throw new Error('系统剪贴板未能保存 PNG');
+    const size = copied.getSize();
+    return { ok: true, durationMs: Date.now() - start, width: size.width, height: size.height };
   } finally {
     // 3) 清理临时文件
     try { await fsp.unlink(tempPng); } catch { /* ignore */ }

@@ -2,7 +2,7 @@
 // 默认硬编码到 C:\Users\Cornex\Desktop\时序图draw，用户可在面板里修改
 
 import { useCallback, useEffect, useState } from 'react';
-import { svgToCroppedCanvas } from '../lib/exportPng';
+import { canvasHasVisibleContent, svgToCroppedCanvas } from '../lib/exportPng';
 
 const LS_IMAGE_DIR = 'mwf:imageDir';
 const LS_MMD_DIR = 'mwf:mmdDir';
@@ -41,7 +41,7 @@ export interface ElectronAPI {
   revealInFolder: (p: string) => Promise<{ ok: boolean }>;
   openExternal: (url: string) => Promise<{ ok: true }>;
   /** PNG dataURL → 系统剪贴板（仅支持 PNG，nativeImage 不支持 SVG） */
-  copyPngClipboard: (dataUrl: string) => Promise<{ ok: true }>;
+  copyPngClipboard: (dataUrl: string) => Promise<{ ok: true; width: number; height: number }>;
   /** 把 PNG dataURL 直接写入文件（无需 base64 ↔ dataURL 转换） */
   writePng: (filePath: string, dataUrl: string) => Promise<{ ok: true; filePath: string; size: number }>;
   /** 调用 Python + Playwright 把 SVG 字符串转成 PNG 文件（高清） */
@@ -51,7 +51,7 @@ export interface ElectronAPI {
     scale: number,
   ) => Promise<{ ok: true; filePath: string; size: number; durationMs: number }>;
   /** 调用 Python 生成 PNG 并直接写入系统剪贴板（一次性 IPC，main 端清理临时文件） */
-  copySvgAsPngToClipboard: (svgString: string, scale: number) => Promise<{ ok: true; durationMs: number }>;
+  copySvgAsPngToClipboard: (svgString: string, scale: number) => Promise<{ ok: true; durationMs: number; width: number; height: number }>;
   /** 检测 Python + Playwright 是否就绪 */
   checkPythonReady: () => Promise<{ ready: boolean; reason?: string; python?: string; script?: string }>;
 }
@@ -189,30 +189,25 @@ export function useSaveSettings() {
     }
   }, [checkPython]);
 
-  /** 保存 PNG 到 imageDir：优先 Python（更高清），失败回退 canvas */
+  /** 保存 PNG 到 imageDir：优先经过非空校验的 Canvas，失败后再尝试 Python */
   const savePng = useCallback(
     async (svgEl: SVGSVGElement, filename: string): Promise<string> => {
       const api = window.electronAPI;
       if (!api) throw new Error('Electron API 不可用，请在桌面应用中运行');
       const filePath = joinPath(imageDir, filename);
-      // 优先走 Python
-      if (api.convertSvgToPng && pythonReady !== false) {
-        try {
-          const svgString = serializeSvg(svgEl);
-          const result = await api.convertSvgToPng(svgString, filePath, 8);
-          return result.filePath;
-        } catch (e) {
-          // Python 失败：回退 canvas 方案
-          console.warn('[savePng] Python 转换失败，回退 canvas:', e);
-          const dataUrl = await svgToDataUrl(svgEl, 6);
-          const result = await api.writePng(filePath, dataUrl);
-          return result.filePath;
-        }
+      try {
+        const canvas = await svgToCroppedCanvas(svgEl, 3);
+        if (!canvasHasVisibleContent(canvas)) throw new Error('检测到生成图片为空白');
+        const result = await api.writePng(filePath, canvas.toDataURL('image/png'));
+        return result.filePath;
+      } catch (canvasError) {
+        console.warn('[savePng] Canvas 转换失败，尝试 Python:', canvasError);
       }
-      // 直接走 canvas
-      const dataUrl = await svgToDataUrl(svgEl, 6);
-      const result = await api.writePng(filePath, dataUrl);
-      return result.filePath;
+      if (api.convertSvgToPng && pythonReady !== false) {
+        const result = await api.convertSvgToPng(serializeSvg(svgEl), filePath, 4);
+        return result.filePath;
+      }
+      throw new Error('PNG 生成失败，且 Python 渲染不可用');
     },
     [imageDir, svgToDataUrl, serializeSvg, pythonReady],
   );
@@ -331,31 +326,37 @@ export function useSaveSettings() {
   }, []);
 
   /**
-   * 复制 PNG 到系统剪贴板：优先 Python 生成（更清晰），失败回退 canvas
-   * Python 流程（一次性 IPC，main 端负责临时文件/剪贴板/清理）：
-   *   SVG 字符串 → Python 写临时 PNG → nativeImage 读 PNG → 写剪贴板 → 删临时文件
+   * 复制 PNG 到系统剪贴板：Canvas 和主进程都会检查实际像素，
+   * Canvas 失败后尝试 Python，两者失败则复制 SVG 文本。
    */
   const copyPng = useCallback(
-    async (svgEl: SVGSVGElement): Promise<void> => {
+    async (svgEl: SVGSVGElement): Promise<{ format: 'png' | 'svg'; method: 'canvas' | 'python' | 'text' }> => {
       const api = window.electronAPI;
       if (!api) throw new Error('Electron API 不可用，请在桌面应用中运行');
-      // 优先走 Python
+      const svgString = serializeSvg(svgEl);
+
+      try {
+        const canvas = await svgToCroppedCanvas(svgEl, 3);
+        if (!canvasHasVisibleContent(canvas)) throw new Error('检测到生成图片为空白');
+        await api.copyPngClipboard(canvas.toDataURL('image/png'));
+        return { format: 'png', method: 'canvas' };
+      } catch (canvasError) {
+        console.warn('[copyPng] Canvas 复制失败:', canvasError);
+      }
+
       if (api.copySvgAsPngToClipboard && pythonReady !== false) {
         try {
-          const svgString = serializeSvg(svgEl);
-          await api.copySvgAsPngToClipboard(svgString, 8);
-          return;
-        } catch (e) {
-          console.warn('[copyPng] Python 复制失败，回退 canvas:', e);
-          const dataUrl = await svgToDataUrl(svgEl, 6);
-          await api.copyPngClipboard(dataUrl);
+          await api.copySvgAsPngToClipboard(svgString, 4);
+          return { format: 'png', method: 'python' };
+        } catch (pythonError) {
+          console.warn('[copyPng] Python 复制失败:', pythonError);
         }
-      } else {
-        const dataUrl = await svgToDataUrl(svgEl, 6);
-        await api.copyPngClipboard(dataUrl);
       }
+
+      await api.copyTextClipboard(svgString);
+      return { format: 'svg', method: 'text' };
     },
-    [svgToDataUrl, serializeSvg, pythonReady],
+    [serializeSvg, pythonReady],
   );
 
   return {

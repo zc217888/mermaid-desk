@@ -115,6 +115,25 @@ export async function svgToPngBlob(svgEl: SVGSVGElement, scale = 6): Promise<Blo
   });
 }
 
+/** 缩略采样检查 Canvas 是否包含非白色内容，防止把纯白图当作成功结果。 */
+export function canvasHasVisibleContent(canvas: HTMLCanvasElement): boolean {
+  const sample = document.createElement('canvas');
+  sample.width = 64;
+  sample.height = 64;
+  const context = sample.getContext('2d', { willReadFrequently: true });
+  if (!context) return false;
+  context.drawImage(canvas, 0, 0, sample.width, sample.height);
+  const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+  let visiblePixels = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] > 20 && (pixels[i] < 245 || pixels[i + 1] < 245 || pixels[i + 2] < 245)) {
+      visiblePixels += 1;
+      if (visiblePixels >= 4) return true;
+    }
+  }
+  return false;
+}
+
 export async function copySvgAsPng(svgEl: SVGSVGElement): Promise<boolean> {
   try {
     const blob = await svgToPngBlob(svgEl, 6);

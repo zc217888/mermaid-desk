@@ -186,9 +186,13 @@ export default function App() {
     // 桌面版：优先 Python + Playwright（更高清），失败回退 canvas
     if (save.isElectron) {
       try {
-        await save.copyPng(svgEl);
-        const tag = save.pythonReady ? '（Python 8x 高清）' : '（6x 高清）';
-        push({ type: 'success', text: `PNG ${tag}已复制到剪贴板` });
+        const result = await save.copyPng(svgEl);
+        if (result.format === 'png') {
+          const tag = result.method === 'canvas' ? '本地渲染' : 'Python 渲染';
+          push({ type: 'success', text: `PNG 已复制到剪贴板（${tag}）` });
+        } else {
+          push({ type: 'warn', text: '图片复制失败，已改为复制 SVG 源码' });
+        }
         return;
       } catch (e) {
         push({ type: 'error', text: `复制失败：${(e as Error).message}` });
