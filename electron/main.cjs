@@ -84,13 +84,6 @@ function createWindow() {
   // 隐藏默认菜单栏（保留 Alt 键唤出）
   Menu.setApplicationMenu(null);
 
-  // 调试模式下自动打开 DevTools
-  if (isDev) {
-    mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
-    });
-  }
-
   if (isDev) {
     mainWindow.loadURL('http://127.0.0.1:5173');
   } else {
