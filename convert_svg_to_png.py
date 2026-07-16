@@ -51,6 +51,11 @@ DEFAULT_SCALE = 8  # 8x 已经是视网膜级，再高文件会非常大
 TEMP_SVG_NAME = "_mermaid_temp_input.svg"
 
 
+def normalize_unicode(text: str) -> str:
+    """合并合法代理对，并把孤立代理字符替换为 U+FFFD。"""
+    return text.encode("utf-16", errors="surrogatepass").decode("utf-16", errors="replace")
+
+
 # ============== 参数解析 ==============
 
 def parse_args() -> argparse.Namespace:
@@ -135,10 +140,11 @@ async def _render_svg_to_png_file(page, svg_file_url: str, png_path: Path) -> bo
 
 async def convert_svg_string(svg_content: str, png_path: Path, scale: int) -> None:
     """把 SVG 字符串渲染成 PNG 写到 png_path"""
+    svg_content = normalize_unicode(svg_content)
     # 把 SVG 写到 png_path 旁边的临时文件
     png_path.parent.mkdir(parents=True, exist_ok=True)
     temp_svg = png_path.parent / TEMP_SVG_NAME
-    temp_svg.write_text(svg_content, encoding="utf-8")
+    temp_svg.write_text(svg_content, encoding="utf-8", errors="replace")
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch()

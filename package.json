@@ -42,6 +42,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "convert_svg_to_png.py",
       "package.json"
     ],
     "win": {

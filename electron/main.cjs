@@ -498,6 +498,7 @@ ipcMain.handle('convert-svg-to-png', async (_evt, { svgString, outputPath, scale
     const child = spawn(py, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8:replace' },
     });
     let stdout = '';
     let stderr = '';
@@ -591,7 +592,11 @@ ipcMain.handle('copy-svg-as-png-to-clipboard', async (_evt, { svgString, scale }
   try {
     // 1) 调用 Python 生成临时 PNG
     await new Promise((resolve, reject) => {
-      const child = spawn(py, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+      const child = spawn(py, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+        env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8:replace' },
+      });
       let stderr = '';
       let killed = false;
       const timer = setTimeout(() => {
