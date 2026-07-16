@@ -1,12 +1,9 @@
-// 用 SVG 原生 getBBox() 获取精确内容边界，瞬间完成，无需像素扫描
-// scale 默认 6x。先按 viewBox 全尺寸渲染 → 裁剪到内容边界 → 高缩放倍率输出
+// 用 SVG 原生 getBBox() 获取实际内容边界，再按内容尺寸生成独立画布。
 
-/** 获取 SVG 内容的精确包围盒（基于 Mermaid 最外层 <g> 的 getBBox） */
+/** 获取整个 SVG 的内容包围盒，而不是只取第一个 <g>。 */
 function getContentBounds(svgClone: SVGSVGElement): { x: number; y: number; w: number; h: number } | null {
   try {
-    const g = svgClone.querySelector('g');
-    if (!g) return null;
-    const bbox = g.getBBox();
+    const bbox = svgClone.getBBox();
     if (bbox.width <= 0 || bbox.height <= 0) return null;
     return { x: bbox.x, y: bbox.y, w: bbox.width, h: bbox.height };
   } catch {
@@ -22,11 +19,19 @@ export async function svgToCroppedCanvas(
   const cloned = svgEl.cloneNode(true) as SVGSVGElement;
 
   const viewBox = cloned.getAttribute('viewBox');
-  let vw = parseFloat(cloned.getAttribute('width') || '0');
-  let vh = parseFloat(cloned.getAttribute('height') || '0');
-  if ((!vw || !vh) && viewBox) {
+  let vx = 0;
+  let vy = 0;
+  let vw = 0;
+  let vh = 0;
+  if (viewBox) {
     const parts = viewBox.split(/[\s,]+/).map(Number);
-    if (parts.length === 4) { vw = vw || parts[2]; vh = vh || parts[3]; }
+    if (parts.length === 4 && parts.every(Number.isFinite)) {
+      [vx, vy, vw, vh] = parts;
+    }
+  }
+  if (!vw || !vh) {
+    vw = parseFloat(cloned.getAttribute('width') || '0');
+    vh = parseFloat(cloned.getAttribute('height') || '0');
   }
   if (!vw || !vh) {
     const rect = svgEl.getBoundingClientRect();
@@ -64,17 +69,23 @@ export async function svgToCroppedCanvas(
   cloned.style.removeProperty('visibility');
   cloned.style.removeProperty('pointer-events');
 
-  // 2. 确定裁剪区域（8px 内边距，但不超过 viewBox）
+  // 2. 按实际内容确定新的 SVG viewBox。不同图表会得到不同输出尺寸。
   const pad = 8;
   let cx: number, cy: number, cw: number, ch: number;
   if (contentBounds && contentBounds.w > 0 && contentBounds.h > 0) {
-    cx = Math.max(0, contentBounds.x - pad);
-    cy = Math.max(0, contentBounds.y - pad);
-    cw = Math.min(vw - cx, contentBounds.w + pad * 2);
-    ch = Math.min(vh - cy, contentBounds.h + pad * 2);
+    cx = contentBounds.x - pad;
+    cy = contentBounds.y - pad;
+    cw = contentBounds.w + pad * 2;
+    ch = contentBounds.h + pad * 2;
   } else {
-    cx = 0; cy = 0; cw = vw; ch = vh;
+    cx = vx; cy = vy; cw = vw; ch = vh;
   }
+
+  cw = Math.max(1, cw);
+  ch = Math.max(1, ch);
+  cloned.setAttribute('viewBox', `${cx} ${cy} ${cw} ${ch}`);
+  cloned.setAttribute('width', String(cw));
+  cloned.setAttribute('height', String(ch));
 
   // 3. 用 Image 渲染到 canvas
   const svgBlob = new Blob(
@@ -92,13 +103,20 @@ export async function svgToCroppedCanvas(
       img.src = url;
     });
 
+    // Chromium Canvas 有尺寸和内存上限。超长图自动降低倍率，但保留内容比例。
+    const maxDimension = 16_384;
+    const maxArea = 64_000_000;
+    const dimensionScale = Math.min(maxDimension / cw, maxDimension / ch);
+    const areaScale = Math.sqrt(maxArea / (cw * ch));
+    const outputScale = Math.max(0.1, Math.min(scale, dimensionScale, areaScale));
+
     const out = document.createElement('canvas');
-    out.width = Math.ceil(cw * scale);
-    out.height = Math.ceil(ch * scale);
+    out.width = Math.max(1, Math.ceil(cw * outputScale));
+    out.height = Math.max(1, Math.ceil(ch * outputScale));
     const o = out.getContext('2d')!;
     o.fillStyle = '#ffffff';
     o.fillRect(0, 0, out.width, out.height);
-    o.drawImage(img, cx, cy, cw, ch, 0, 0, out.width, out.height);
+    o.drawImage(img, 0, 0, out.width, out.height);
     return out;
   } finally {
     URL.revokeObjectURL(url);
